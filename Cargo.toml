@@ -1,0 +1,5 @@
+[workspace]
+members = ["nsudoku-solver-cli", "libnsudoku-solver"]
+
+[workspace.dependencies]
+ndarray = "0.15.6"
