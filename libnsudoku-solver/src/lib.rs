@@ -1,6 +1,6 @@
 use std::num::NonZeroU8;
 
-use ndarray::Array2;
+use ndarray::{Array2, ArrayView2};
 use thiserror::Error;
 
 #[cfg(test)]
@@ -16,10 +16,10 @@ pub enum SudokuError {
     InvalidValue { value: u8, max: usize },
     #[error("Invalid number of values for Sudoku, expected {expected} got {len}")]
     InvalidValuesAmount { len: usize, expected: usize },
-    #[error("{sudoku}\nIs not a solved sudoku")]
-    NotSolved { sudoku: Sudoku },
-    #[error("{sudoku}\nHas a wrong value at {pos:?}")]
-    WrongValueSet { sudoku: Sudoku, pos: (usize, usize) },
+    #[error("Is not a solved sudoku")]
+    NotSolved,
+    #[error("Wrong value at {pos:?}")]
+    WrongValueSet { pos: (usize, usize) },
 }
 
 pub type Result<T> = core::result::Result<T, SudokuError>;
@@ -55,7 +55,7 @@ impl Sudoku {
 
     /// Create an empty Sudoku with grid width `grid_w`
     ///
-    /// Returns `None` if the `grid_w` is invalid (`Self::valid_grid_width`)
+    /// Returns `Err` if the `grid_w` is invalid (`Self::valid_grid_width`)
     pub fn try_empty(grid_w: usize) -> Result<Self> {
         Self::valid_grid_width(grid_w)
             .then(|| {
@@ -99,9 +99,16 @@ impl Sudoku {
     /// - The values are not valid for the size of the Sudoku
     pub fn try_new(grid_w: usize, values: Vec<Option<SudokuValue>>) -> Result<Self> {
         Self::validate_grid_width(grid_w)?;
-
+        // Make sure all values are in the correct range
         Self::validate_values(grid_w, values.iter().copied())?;
-
+        let mut vals = Vec::with_capacity(grid_w * grid_w);
+        let xs = ArrayView2::from_shape((grid_w * grid_w, grid_w * grid_w), &values).unwrap();
+        // Verify Rows
+        Self::validate_rows_scratch(xs, &mut vals)?;
+        // Verify Columns
+        Self::validate_columns_scratch(xs, &mut vals)?;
+        // Verify cells
+        Self::validate_cells_scratch(grid_w, xs, &mut vals)?;
         // Safety: we check invariants beforehand
         Ok(unsafe { Self::new_unchecked(grid_w, values) })
     }
@@ -123,7 +130,20 @@ impl Sudoku {
             Self::validate_values(grid_w, values.iter().copied()).is_ok(),
             "Invalid values"
         );
-
+        debug_assert_eq!(
+            (|| {
+                let mut vals = Vec::with_capacity(grid_w * grid_w);
+                let xs =
+                    ArrayView2::from_shape((grid_w * grid_w, grid_w * grid_w), &values).unwrap();
+                // Verify Rows
+                Self::validate_rows_scratch(xs, &mut vals)?;
+                // Verify Columns
+                Self::validate_columns_scratch(xs, &mut vals)?;
+                // Verify cells
+                Self::validate_cells_scratch(grid_w, xs, &mut vals)
+            })(),
+            Ok(())
+        );
         Self {
             grid_w,
             values: Array2::from_shape_vec_unchecked((grid_w * grid_w, grid_w * grid_w), values),
@@ -171,7 +191,6 @@ impl Sudoku {
     }
 
     /// Checks if there are enough values and all values are valid for the specified Sudoku size
-    #[inline]
     pub fn validate_values(
         grid_w: usize,
         values: impl ExactSizeIterator<Item = Option<SudokuValue>>,
@@ -200,6 +219,86 @@ impl Sudoku {
         }
     }
 
+    /// If there is a duplicate value, return its index
+    fn duplicate_value_positon<T: PartialEq>(vals: &[T]) -> Option<usize> {
+        vals.iter()
+            .enumerate()
+            .position(|(i, val)| vals[i + 1..].contains(val))
+    }
+
+    /// Check if a Sudoku axis has an invalid value
+    ///
+    /// Returns the index of the axis, and the index of the offending element in a tuple
+    ///
+    /// An axis could be a row, column or cell
+    ///
+    /// Passing an approriately sized (grid_w²) vector as scratch, makes this function not allocate
+    /// any extra space
+    fn invalid_sudoku_axis<'a, T, I>(
+        axis: impl IntoIterator<Item = I>,
+        scratch: &'a mut Vec<T>,
+    ) -> Option<(usize, usize)>
+    where
+        I: IntoIterator<Item = &'a T>,
+        T: PartialEq + Copy,
+    {
+        for (i, a) in axis.into_iter().enumerate() {
+            scratch.clear();
+            scratch.extend(a.into_iter().copied());
+            if let Some(j) = Self::duplicate_value_positon(scratch) {
+                return Some((i, j));
+            }
+        }
+        None
+    }
+
+    /// Validate the Sudoku invariants on the rows
+    ///
+    /// More Efficient as it doesn't need an extra allocation if you already have a buffer
+    fn validate_rows_scratch(
+        values: ArrayView2<Option<SudokuValue>>,
+        vals: &mut Vec<Option<SudokuValue>>,
+    ) -> Result<()> {
+        if let Some((iy, ix)) = Self::invalid_sudoku_axis(values.rows(), vals) {
+            return Err(SudokuError::WrongValueSet { pos: (ix, iy) });
+        }
+        Ok(())
+    }
+
+    /// Validate the sudoku invariants on the columns
+    ///
+    /// More Efficient as it doesn't need an extra allocation if you already have a buffer
+    fn validate_columns_scratch(
+        values: ArrayView2<Option<SudokuValue>>,
+        vals: &mut Vec<Option<SudokuValue>>,
+    ) -> Result<()> {
+        if let Some((ix, iy)) = Self::invalid_sudoku_axis(values.columns(), vals) {
+            return Err(SudokuError::WrongValueSet { pos: (ix, iy) });
+        }
+        Ok(())
+    }
+
+    /// Validate the sudoku invariants on the cells
+    ///
+    /// More Efficient as it doesn't need an extra allocation if you already have a buffer
+    fn validate_cells_scratch(
+        grid_w: usize,
+        values: ArrayView2<Option<SudokuValue>>,
+        vals: &mut Vec<Option<SudokuValue>>,
+    ) -> Result<()> {
+        if let Some((i, j)) = Self::invalid_sudoku_axis(values.exact_chunks((grid_w, grid_w)), vals)
+        {
+            let (ix, iy) = (i % grid_w + j % grid_w, grid_w + j / grid_w);
+            return Err(SudokuError::WrongValueSet { pos: (ix, iy) });
+        }
+        Ok(())
+    }
+
+    /// All values are set
+    pub fn filled(&self) -> bool {
+        self.values.iter().all(Option::is_some)
+    }
+
     /// Convert into a solved Sudoku
     ///
     /// **Panics** if
@@ -212,78 +311,24 @@ impl Sudoku {
 
     /// Try to convert this Sudoku into a solved Sudoku
     pub fn try_solved(self) -> Result<SolvedSudoku> {
-        let Sudoku { grid_w: _, values } = &self;
-        if values.iter().any(Option::is_none) {
-            return Err(SudokuError::NotSolved { sudoku: self });
+        let grid_w = self.grid_w;
+        // Check that all values are set
+        if self.filled() {
+            return Err(SudokuError::NotSolved);
         }
-
-        let Sudoku { grid_w, values } = self;
-        let values = values.mapv(Option::unwrap);
-
+        let mut vals = Vec::with_capacity(grid_w * grid_w);
+        let values = self.values.view();
         // Verify Rows
-        let mut vals: Vec<SudokuValue> = Vec::with_capacity(grid_w * grid_w);
-        for (iy, row) in values.rows().into_iter().enumerate() {
-            vals.clear();
-            vals.extend(row);
-            if let Some(ix) = vals
-                .iter()
-                .enumerate()
-                .position(|(k, val)| vals[k + 1..].contains(val))
-            {
-                return Err(SudokuError::WrongValueSet {
-                    sudoku: Sudoku {
-                        grid_w,
-                        values: values.mapv(Some),
-                    },
-                    pos: (ix, iy),
-                });
-            }
-        }
-
+        Self::validate_rows_scratch(values, &mut vals)?;
         // Verify Columns
-        for (ix, col) in values.columns().into_iter().enumerate() {
-            vals.clear();
-            vals.extend(col);
-            if let Some(iy) = vals
-                .iter()
-                .enumerate()
-                .position(|(k, val)| vals[k + 1..].contains(val))
-            {
-                return Err(SudokuError::WrongValueSet {
-                    sudoku: Sudoku {
-                        grid_w,
-                        values: values.mapv(Some),
-                    },
-                    pos: (ix, iy),
-                });
-            }
-        }
-
+        Self::validate_columns_scratch(values, &mut vals)?;
         // Verify cells
-        for (i, cell) in values
-            .exact_chunks((grid_w, grid_w))
-            .into_iter()
-            .enumerate()
-        {
-            vals.clear();
-            vals.extend(cell);
-            if let Some(j) = vals
-                .iter()
-                .enumerate()
-                .position(|(k, val)| vals[k + 1..].contains(val))
-            {
-                let (ix, iy) = (i % grid_w + j % grid_w, i / grid_w + j / grid_w);
-                return Err(SudokuError::WrongValueSet {
-                    sudoku: Sudoku {
-                        grid_w,
-                        values: values.mapv(Some),
-                    },
-                    pos: (ix, iy),
-                });
-            }
-        }
-
-        Ok(SolvedSudoku { grid_w, values })
+        Self::validate_cells_scratch(grid_w, values, &mut vals)?;
+        // Sudoku is solved
+        Ok(SolvedSudoku {
+            grid_w,
+            values: self.values.mapv(Option::unwrap),
+        })
     }
 }
 
@@ -461,11 +506,8 @@ mod test {
         .unwrap();
 
         assert_eq!(
-            s.clone().try_solved(),
-            Err(SudokuError::WrongValueSet {
-                sudoku: s,
-                pos: (0, 0)
-            })
+            s.try_solved(),
+            Err(SudokuError::WrongValueSet { pos: (0, 0) })
         );
     }
 
@@ -482,11 +524,8 @@ mod test {
         .unwrap();
 
         assert_eq!(
-            s.clone().try_solved(),
-            Err(SudokuError::WrongValueSet {
-                sudoku: s,
-                pos: (0, 1)
-            })
+            s.try_solved(),
+            Err(SudokuError::WrongValueSet { pos: (0, 1) })
         );
     }
 
@@ -503,11 +542,8 @@ mod test {
         .unwrap();
 
         assert_eq!(
-            s.clone().try_solved(),
-            Err(SudokuError::WrongValueSet {
-                sudoku: s,
-                pos: (0, 0)
-            })
+            s.try_solved(),
+            Err(SudokuError::WrongValueSet { pos: (0, 0) })
         );
     }
 
