@@ -100,15 +100,7 @@ impl Sudoku {
     pub fn try_new(grid_w: usize, values: Vec<Option<SudokuValue>>) -> Result<Self> {
         Self::validate_grid_width(grid_w)?;
         // Make sure all values are in the correct range
-        Self::validate_values(grid_w, values.iter().copied())?;
-        let mut vals = Vec::with_capacity(grid_w * grid_w);
-        let xs = ArrayView2::from_shape((grid_w * grid_w, grid_w * grid_w), &values).unwrap();
-        // Verify Rows
-        Self::validate_rows_scratch(xs, &mut vals)?;
-        // Verify Columns
-        Self::validate_columns_scratch(xs, &mut vals)?;
-        // Verify cells
-        Self::validate_cells_scratch(grid_w, xs, &mut vals)?;
+        Self::validate_values(grid_w, &values)?;
         // Safety: we check invariants beforehand
         Ok(unsafe { Self::new_unchecked(grid_w, values) })
     }
@@ -127,22 +119,8 @@ impl Sudoku {
             "Invalid grid width"
         );
         debug_assert!(
-            Self::validate_values(grid_w, values.iter().copied()).is_ok(),
+            Self::validate_values(grid_w, &values).is_ok(),
             "Invalid values"
-        );
-        debug_assert_eq!(
-            (|| {
-                let mut vals = Vec::with_capacity(grid_w * grid_w);
-                let xs =
-                    ArrayView2::from_shape((grid_w * grid_w, grid_w * grid_w), &values).unwrap();
-                // Verify Rows
-                Self::validate_rows_scratch(xs, &mut vals)?;
-                // Verify Columns
-                Self::validate_columns_scratch(xs, &mut vals)?;
-                // Verify cells
-                Self::validate_cells_scratch(grid_w, xs, &mut vals)
-            })(),
-            Ok(())
         );
         Self {
             grid_w,
@@ -183,18 +161,12 @@ impl Sudoku {
 
     /// Checks if all values are valid values
     #[inline]
-    pub fn valid_values(
-        grid_w: usize,
-        values: impl ExactSizeIterator<Item = Option<SudokuValue>>,
-    ) -> bool {
+    pub fn valid_values(grid_w: usize, values: &[Option<SudokuValue>]) -> bool {
         Self::validate_values(grid_w, values).is_ok()
     }
 
     /// Checks if there are enough values and all values are valid for the specified Sudoku size
-    pub fn validate_values(
-        grid_w: usize,
-        values: impl ExactSizeIterator<Item = Option<SudokuValue>>,
-    ) -> Result<()> {
+    pub fn validate_values(grid_w: usize, values: &[Option<SudokuValue>]) -> Result<()> {
         // Correct number of values
         let expected = grid_w * grid_w * grid_w * grid_w;
         if values.len() != expected {
@@ -203,20 +175,27 @@ impl Sudoku {
                 expected,
             });
         }
-
         // Values are Valid
         if let Some(value) = values
+            .iter()
+            .copied()
             .flatten()
             .find(|&value| !Self::valid_value(grid_w, value))
             .map(|value| value.0.get())
         {
-            Err(SudokuError::InvalidValue {
+            return Err(SudokuError::InvalidValue {
                 value,
                 max: grid_w * grid_w,
-            })
-        } else {
-            Ok(())
+            });
         }
+        let mut vals = Vec::with_capacity(grid_w * grid_w);
+        let xs = ArrayView2::from_shape((grid_w * grid_w, grid_w * grid_w), values).unwrap();
+        // Verify Rows
+        Self::validate_rows_scratch(xs, &mut vals)?;
+        // Verify Columns
+        Self::validate_columns_scratch(xs, &mut vals)?;
+        // Verify cells
+        Self::validate_cells_scratch(grid_w, xs, &mut vals)
     }
 
     /// If there is a duplicate value, return its index
