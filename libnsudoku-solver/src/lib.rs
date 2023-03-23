@@ -244,9 +244,10 @@ impl Sudoku {
     }
 
     /// If there is a duplicate value, return its index
-    fn duplicate_value_positon<T: PartialEq>(vals: &[T]) -> Option<usize> {
+    fn duplicate_value_positon(vals: &[Option<SudokuValue>]) -> Option<usize> {
         vals.iter()
             .enumerate()
+            .filter(|(_, val)| val.is_some())
             .position(|(i, val)| vals[i + 1..].contains(val))
     }
 
@@ -258,13 +259,12 @@ impl Sudoku {
     ///
     /// Passing an approriately sized (``grid_w²``) vector as scratch, makes this function not allocate
     /// any extra space
-    fn invalid_sudoku_axis<'a, T, I>(
+    fn invalid_sudoku_axis<'a, I>(
         axis: impl IntoIterator<Item = I>,
-        scratch: &'a mut Vec<T>,
+        scratch: &'a mut Vec<Option<SudokuValue>>,
     ) -> Option<(usize, usize)>
     where
-        I: IntoIterator<Item = &'a T>,
-        T: PartialEq + Copy,
+        I: IntoIterator<Item = &'a Option<SudokuValue>>,
     {
         for (i, a) in axis.into_iter().enumerate() {
             scratch.clear();
@@ -343,7 +343,7 @@ impl Sudoku {
     pub fn try_solved(self) -> Result<SolvedSudoku> {
         let grid_w = self.grid_w;
         // Check that all values are set
-        if self.filled() {
+        if !self.filled() {
             return Err(SudokuError::NotSolved);
         }
         let mut vals = Vec::with_capacity(grid_w * grid_w);
@@ -539,7 +539,7 @@ mod test {
     }
 
     #[test]
-    fn solved_sudoku_2x2_bad_row() {
+    fn sudoku_2x2_bad_row() {
         let s = Sudoku::try_new(
             2,
             [1, 1, 3, 4, 3, 4, 1, 2, 4, 3, 2, 1, 2, 1, 4, 3]
@@ -547,17 +547,13 @@ mod test {
                 .map(NonZeroU8::new)
                 .map(|val| val.map(Into::into))
                 .collect(),
-        )
-        .unwrap();
-
-        assert_eq!(
-            s.try_solved(),
-            Err(SudokuError::WrongValueSet { pos: (0, 0) })
         );
+
+        assert_eq!(s, Err(SudokuError::WrongValueSet { pos: (0, 0) }));
     }
 
     #[test]
-    fn solved_sudoku_2x2_bad_col() {
+    fn sudoku_2x2_bad_col() {
         let s = Sudoku::try_new(
             2,
             [1, 2, 3, 4, 4, 3, 1, 2, 4, 3, 2, 1, 2, 1, 4, 3]
@@ -565,17 +561,13 @@ mod test {
                 .map(NonZeroU8::new)
                 .map(|val| val.map(Into::into))
                 .collect(),
-        )
-        .unwrap();
-
-        assert_eq!(
-            s.try_solved(),
-            Err(SudokuError::WrongValueSet { pos: (0, 1) })
         );
+
+        assert_eq!(s, Err(SudokuError::WrongValueSet { pos: (0, 1) }));
     }
 
     #[test]
-    fn solved_sudoku_2x2_bad_cell() {
+    fn sudoku_2x2_bad_cell() {
         let s = Sudoku::try_new(
             2,
             [1, 2, 3, 4, 2, 1, 4, 3, 3, 4, 1, 2, 4, 3, 2, 1]
@@ -583,13 +575,9 @@ mod test {
                 .map(NonZeroU8::new)
                 .map(|val| val.map(Into::into))
                 .collect(),
-        )
-        .unwrap();
-
-        assert_eq!(
-            s.try_solved(),
-            Err(SudokuError::WrongValueSet { pos: (0, 0) })
         );
+
+        assert_eq!(s, Err(SudokuError::WrongValueSet { pos: (0, 2) }));
     }
 
     #[test]
