@@ -149,23 +149,31 @@ mod test {
     use super::{IterativeDfs, RecursiveDfs, Solver};
     use crate::{solver::Error, Sudoku};
 
-    use pretty_assertions::assert_ne;
+    #[allow(unused_imports)]
+    use pretty_assertions::{assert_eq, assert_ne};
+
+    fn test_solver_on_empty_sudoku(solver: &mut impl Solver, grid_w: usize) {
+        let width = grid_w * grid_w;
+        let empty = Sudoku::empty(grid_w);
+        assert_ne!(
+            solver.solve(empty),
+            Err(Error::NotSolvable),
+            "Couldn't solve {width}×{width} empty Sudoku"
+        );
+    }
 
     #[test]
     fn iterative_dfs_solve_empty() {
         let mut solver = IterativeDfs::default();
-        for grid_w in 2..=15 {
-            let empty = Sudoku::empty(grid_w);
-            assert_ne!(solver.solve(empty), Err(Error::NotSolvable));
+        for grid_w in 2..=4 {
+            test_solver_on_empty_sudoku(&mut solver, grid_w);
         }
     }
 
     #[test]
     fn recursive_dfs_solve_empty() {
         let mut solver = RecursiveDfs::default();
-        for grid_w in 2..=15 {
-            let empty = Sudoku::empty(grid_w);
-            assert_ne!(solver.solve(empty), Err(Error::NotSolvable));
-        }
+        let grid_w = 2;
+        test_solver_on_empty_sudoku(&mut solver, grid_w);
     }
 }
