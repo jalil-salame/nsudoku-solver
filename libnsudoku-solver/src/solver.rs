@@ -1,10 +1,10 @@
-use std::num::NonZeroU8;
+use std::{num::NonZeroU8, ops::ControlFlow};
 
 use crate::{SolvedSudoku, Sudoku};
 
 use thiserror::Error;
 
-#[derive(Debug, Clone, Error)]
+#[derive(Debug, Clone, Error, PartialEq, Eq)]
 pub enum Error {
     #[error("There is no way to solve this Sudoku")]
     NotSolvable,
@@ -62,11 +62,11 @@ impl super::Sudoku {
 }
 
 #[derive(Debug, Default, Clone)]
-pub struct Dfs {
+pub struct IterativeDfs {
     empty: Vec<(usize, usize)>,
 }
 
-impl Solver for Dfs {
+impl Solver for IterativeDfs {
     fn solve(&mut self, mut sudoku: Sudoku) -> Result<SolvedSudoku, Error> {
         self.empty.clear();
         // Find empty cells
@@ -105,5 +105,66 @@ impl Solver for Dfs {
         }
         // Sudoku has been solved
         Ok(sudoku.solved())
+    }
+}
+
+#[derive(Debug, Default, Clone)]
+pub struct RecursiveDfs;
+
+impl RecursiveDfs {
+    fn recurse(sudoku: &mut Sudoku) -> ControlFlow<()> {
+        let max = sudoku.max_value().0.get();
+        // Get an empty cell
+        let Some((ix, _)) = sudoku.values.indexed_iter().find(|(_, val)| val.is_none()) else { return ControlFlow::Break(()); };
+        // Try different values for the empty cell
+        for value in 1..max {
+            let empty = sudoku.values.get_mut(ix).unwrap();
+            *empty = Some(unsafe { NonZeroU8::new_unchecked(value) }.into());
+            // Ensure valid Sudoku
+            if sudoku.validate_chage_at(ix) {
+                // Try setting another cell
+                Self::recurse(sudoku)?;
+            }
+        }
+        // Set cell as empty
+        let empty = sudoku.values.get_mut(ix).unwrap();
+        *empty = None;
+        // No value was right
+        ControlFlow::Continue(())
+    }
+}
+
+impl Solver for RecursiveDfs {
+    fn solve(&mut self, mut sudoku: Sudoku) -> Result<SolvedSudoku, Error> {
+        match Self::recurse(&mut sudoku) {
+            ControlFlow::Continue(_) => Err(Error::NotSolvable),
+            ControlFlow::Break(_) => Ok(sudoku.try_solved().unwrap()),
+        }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::{IterativeDfs, RecursiveDfs, Solver};
+    use crate::{solver::Error, Sudoku};
+
+    use pretty_assertions::assert_ne;
+
+    #[test]
+    fn iterative_dfs_solve_empty() {
+        let mut solver = IterativeDfs::default();
+        for grid_w in 2..=15 {
+            let empty = Sudoku::empty(grid_w);
+            assert_ne!(solver.solve(empty), Err(Error::NotSolvable));
+        }
+    }
+
+    #[test]
+    fn recursive_dfs_solve_empty() {
+        let mut solver = RecursiveDfs::default();
+        for grid_w in 2..=15 {
+            let empty = Sudoku::empty(grid_w);
+            assert_ne!(solver.solve(empty), Err(Error::NotSolvable));
+        }
     }
 }
