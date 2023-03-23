@@ -1,3 +1,4 @@
+#![warn(clippy::pedantic)]
 use std::num::NonZeroU8;
 
 use ndarray::{Array2, ArrayView2};
@@ -48,14 +49,19 @@ pub struct Sudoku {
 impl Sudoku {
     /// Create an empty Sudoku with grid width `grid_w`
     ///
-    /// **Panics** if `grid_w` is not valid (`Self::valid_grid_width`)
+    /// # Panics
+    ///
+    /// If `grid_w` is not valid (`Self::valid_grid_width`)
+    #[must_use]
     pub fn empty(grid_w: usize) -> Self {
         Self::try_empty(grid_w).unwrap()
     }
 
     /// Create an empty Sudoku with grid width `grid_w`
     ///
-    /// Returns `Err` if the `grid_w` is invalid (`Self::valid_grid_width`)
+    /// # Errors
+    ///
+    /// `Err` if the `grid_w` is invalid (`Self::valid_grid_width`)
     pub fn try_empty(grid_w: usize) -> Result<Self> {
         Self::valid_grid_width(grid_w)
             .then(|| {
@@ -70,6 +76,7 @@ impl Sudoku {
     /// # Safety
     ///
     /// The grid width (`grid_w`) must be valid (`Self::valid_grid_width`)
+    #[must_use]
     pub unsafe fn empty_unchecked(grid_w: usize) -> Self {
         // debug: Make sure invariants are met
         debug_assert!(Self::valid_grid_width(grid_w), "Invalid grid width");
@@ -81,18 +88,19 @@ impl Sudoku {
 
     /// Create a Sudoku with grid width `grid_w` with the provided values
     ///
-    /// **Panics**
+    /// # Panics
     ///
     /// - `grid_w` is invalid
     /// - `values.len()` is not `grid_w⁴`
     /// - The values are not valid for the size of the Sudoku
+    #[must_use]
     pub fn new(grid_w: usize, values: Vec<Option<SudokuValue>>) -> Self {
         Self::try_new(grid_w, values).unwrap()
     }
 
     /// Create a Sudoku with grid width `grid_w` with the provided values
     ///
-    /// **Fails**
+    /// # Errors
     ///
     /// - `grid_w` is invalid
     /// - `values.len()` is not `grid_w⁴`
@@ -112,6 +120,7 @@ impl Sudoku {
     /// - `grid_w` must be valid
     /// - `values.len() == grid_w⁴`
     /// - All the values in `values` must be valid for the size of the Sudoku
+    #[must_use]
     pub unsafe fn new_unchecked(grid_w: usize, values: Vec<Option<SudokuValue>>) -> Self {
         // debug: check invariants
         debug_assert!(
@@ -128,23 +137,30 @@ impl Sudoku {
         }
     }
 
-    /// The maximum valid SudokuValue for this Sudoku
+    /// The maximum valid `SudokuValue` for this Sudoku
     #[inline]
+    #[must_use]
     pub fn max_value(&self) -> SudokuValue {
         SudokuValue(
-            ((self.grid_w * self.grid_w) as u8)
-                .try_into()
-                .expect("valid `grid_w`"),
+            (std::convert::TryInto::<u8>::try_into(self.grid_w * self.grid_w)
+                .expect("valid grid_w"))
+            .try_into()
+            .expect("valid `grid_w`"),
         )
     }
 
     /// Checks if `grid_w` is a valid grid width
     #[inline]
+    #[must_use]
     pub fn valid_grid_width(grid_w: usize) -> bool {
         Self::validate_grid_width(grid_w).is_ok()
     }
 
     /// Checks if `grid_w` is a valid grid width
+    ///
+    /// # Errors
+    ///
+    /// If the `grid_w` is not valid
     #[inline]
     pub fn validate_grid_width(grid_w: usize) -> Result<()> {
         if !(2..=15).contains(&grid_w) {
@@ -155,17 +171,43 @@ impl Sudoku {
 
     /// Checks if `value` is a valid `SudokuValue` for a Sudoku with grid width `grid_w`
     #[inline]
+    #[must_use]
     pub fn valid_value(grid_w: usize, value: SudokuValue) -> bool {
-        (1..=(grid_w * grid_w) as u8).contains(&value.0.get())
+        (1..=(grid_w * grid_w).try_into().expect("valid grid_w")).contains(&value.0.get())
+    }
+
+    /// Validate a Sudoku comming from an unknown source
+    ///
+    /// # Errors
+    ///
+    /// - The `grid_w` is invalid
+    /// - There are too many/not enough values
+    /// - The values are not in the right range
+    /// - There are duplicated values in a row, column or cell
+    pub fn validate_sudoku(&self) -> Result<()> {
+        Self::validate_grid_width(self.grid_w)?;
+        Self::validate_values(
+            self.grid_w,
+            self.values
+                .as_slice()
+                .expect("contiguous and in standard order values"),
+        )
     }
 
     /// Checks if all values are valid values
     #[inline]
+    #[must_use]
     pub fn valid_values(grid_w: usize, values: &[Option<SudokuValue>]) -> bool {
         Self::validate_values(grid_w, values).is_ok()
     }
 
     /// Checks if there are enough values and all values are valid for the specified Sudoku size
+    ///
+    /// # Errors
+    ///
+    /// - There are too many/not enough values
+    /// - The values are not in the right range
+    /// - There are duplicated values in a row, column or cell
     pub fn validate_values(grid_w: usize, values: &[Option<SudokuValue>]) -> Result<()> {
         // Correct number of values
         let expected = grid_w * grid_w * grid_w * grid_w;
@@ -189,7 +231,8 @@ impl Sudoku {
             });
         }
         let mut vals = Vec::with_capacity(grid_w * grid_w);
-        let xs = ArrayView2::from_shape((grid_w * grid_w, grid_w * grid_w), values).unwrap();
+        let xs = ArrayView2::from_shape((grid_w * grid_w, grid_w * grid_w), values)
+            .expect("grid_w and values are compatible");
         // Verify Rows
         Self::validate_rows_scratch(xs, &mut vals)?;
         // Verify Columns
@@ -211,7 +254,7 @@ impl Sudoku {
     ///
     /// An axis could be a row, column or cell
     ///
-    /// Passing an approriately sized (grid_w²) vector as scratch, makes this function not allocate
+    /// Passing an approriately sized (``grid_w²``) vector as scratch, makes this function not allocate
     /// any extra space
     fn invalid_sudoku_axis<'a, T, I>(
         axis: impl IntoIterator<Item = I>,
@@ -280,15 +323,21 @@ impl Sudoku {
 
     /// Convert into a solved Sudoku
     ///
-    /// **Panics** if
+    /// # Panics
     ///
     /// - Any value is empty
     /// - Any value is wrong
+    #[must_use]
     pub fn solved(self) -> SolvedSudoku {
         self.try_solved().unwrap()
     }
 
     /// Try to convert this Sudoku into a solved Sudoku
+    ///
+    /// # Errors
+    ///
+    /// - The sudoku is not fully filled
+    /// - There are duplicated values in a row, column or cell
     pub fn try_solved(self) -> Result<SolvedSudoku> {
         let grid_w = self.grid_w;
         // Check that all values are set
@@ -332,7 +381,7 @@ impl std::fmt::Display for Sudoku {
         for (ix, row) in self.values.rows().into_iter().enumerate() {
             // Write separating line
             if (ix % cell_width) == 0 {
-                writeln!(f, "{}", sep_line)?;
+                writeln!(f, "{sep_line}")?;
             }
 
             for (ix, value) in row.into_iter().enumerate() {
@@ -342,7 +391,7 @@ impl std::fmt::Display for Sudoku {
                 }
 
                 if let Some(value) = value {
-                    write!(f, " {:>value_pad$}", value)?;
+                    write!(f, " {value:>value_pad$}")?;
                 } else {
                     write!(f, " {:>value_pad$}", '.')?;
                 }
@@ -350,7 +399,7 @@ impl std::fmt::Display for Sudoku {
             writeln!(f, " |")?;
         }
 
-        write!(f, "{}", sep_line)
+        write!(f, "{sep_line}")
     }
 }
 
@@ -537,7 +586,7 @@ mod test {
                 Err(SudokuError::InvalidGridWidth {
                     grid_w: grid_w.into()
                 })
-            )
+            );
         }
 
         // Too big
@@ -549,7 +598,7 @@ mod test {
                 Err(SudokuError::InvalidGridWidth {
                     grid_w: grid_w.into()
                 })
-            )
+            );
         }
 
         // Just right
@@ -562,7 +611,7 @@ mod test {
                     grid_w,
                     vec![None; grid_w * grid_w * grid_w * grid_w]
                 ))
-            )
+            );
         }
     }
 }
