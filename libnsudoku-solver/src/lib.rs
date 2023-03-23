@@ -26,6 +26,8 @@ pub enum SudokuError {
 pub type Result<T> = core::result::Result<T, SudokuError>;
 
 /// An unsolved Sudoku
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(remote = "Self"))]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Sudoku {
     /// The width of the grid
@@ -403,6 +405,20 @@ impl std::fmt::Display for Sudoku {
     }
 }
 
+#[cfg(feature = "serde")]
+impl<'de> serde::Deserialize<'de> for Sudoku {
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let unchecked = Sudoku::deserialize(deserializer)?;
+        unchecked
+            .validate_sudoku()
+            .map_err(serde::de::Error::custom)
+            .map(|_| unchecked)
+    }
+}
+
 /// A solved Sudoku
 ///
 /// All values are non empty and fullfill the Sudoku invariants
@@ -426,6 +442,7 @@ impl TryFrom<Sudoku> for SolvedSudoku {
 /// Limits grid size to 15x15 as it can only represent values up to 255 (16x16 grids require 256 to
 /// be representable)
 #[repr(transparent)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct SudokuValue(NonZeroU8);
 
