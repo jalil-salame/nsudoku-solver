@@ -93,6 +93,7 @@ impl Solver for IterativeDfs {
                     if ix == 0 {
                         return Err(Error::NotSolvable);
                     }
+                    *value = None;
                     ix -= 1;
                     continue;
                 }
