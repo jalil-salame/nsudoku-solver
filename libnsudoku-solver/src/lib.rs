@@ -4,6 +4,8 @@ use std::num::NonZeroU8;
 use ndarray::{Array2, ArrayView2};
 use thiserror::Error;
 
+pub mod solver;
+
 #[cfg(test)]
 #[allow(unused)]
 use pretty_assertions::{assert_eq, assert_ne};
