@@ -384,23 +384,23 @@ impl std::fmt::Display for Sudoku {
 
         for (ix, row) in self.values.rows().into_iter().enumerate() {
             // Write separating line
-            if (ix % cell_width) == 0 {
+            if (ix % num_cells) == 0 {
                 writeln!(f, "{sep_line}")?;
             }
 
             for (ix, value) in row.into_iter().enumerate() {
                 // Cell separator
-                if ix % cell_width == 0 {
-                    write!(f, "|")?;
+                if ix % num_cells == 0 {
+                    write!(f, "| ")?;
                 }
-
+                // Value
                 if let Some(value) = value {
-                    write!(f, " {value:>value_pad$}")?;
+                    write!(f, "{value:>value_pad$} ")?;
                 } else {
-                    write!(f, " {:>value_pad$}", '.')?;
+                    write!(f, "{:>value_pad$} ", '.')?;
                 }
             }
-            writeln!(f, " |")?;
+            writeln!(f, "|")?;
         }
 
         write!(f, "{sep_line}")
