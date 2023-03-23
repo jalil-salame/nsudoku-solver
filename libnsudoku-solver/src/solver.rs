@@ -34,21 +34,21 @@ impl super::Sudoku {
         if let Some(value) = self.values.get((x, y)).copied() {
             let no_dupe_in_row = || {
                 self.values
-                    .row(y)
+                    .row(x)
                     .indexed_iter()
-                    .all(|(ix, &val)| ix == x || val != value)
+                    .all(|(iy, &val)| iy == y || val != value)
             };
             let no_dupe_in_col = || {
                 self.values
-                    .column(x)
+                    .column(y)
                     .indexed_iter()
-                    .all(|(iy, &val)| iy == y || val != value)
+                    .all(|(ix, &val)| ix == x || val != value)
             };
             let no_dupe_in_cell = || {
                 self.values
                     .exact_chunks((self.grid_w, self.grid_w))
                     .into_iter()
-                    .nth(x / self.grid_w + (y / self.grid_w) * self.grid_w)
+                    .nth(y / self.grid_w + (x / self.grid_w) * self.grid_w)
                     .unwrap()
                     .indexed_iter()
                     .all(|((ix, iy), &val)| {
