@@ -118,7 +118,7 @@ impl RecursiveDfs {
         // Get an empty cell
         let Some((ix, _)) = sudoku.values.indexed_iter().find(|(_, val)| val.is_none()) else { return ControlFlow::Break(()); };
         // Try different values for the empty cell
-        for value in 1..max {
+        for value in 1..=max {
             let empty = sudoku.values.get_mut(ix).unwrap();
             *empty = Some(unsafe { NonZeroU8::new_unchecked(value) }.into());
             // Ensure valid Sudoku
