@@ -1,6 +1,6 @@
 use std::{num::NonZeroU8, ops::ControlFlow};
 
-use crate::{SolvedSudoku, Sudoku};
+use crate::{SolvedSudoku, Sudoku, SudokuValue};
 
 use thiserror::Error;
 
@@ -30,34 +30,31 @@ impl super::SudokuValue {
 }
 
 impl super::Sudoku {
-    fn validate_chage_at(&self, (x, y): (usize, usize)) -> bool {
-        if let Some(value) = self.values.get((x, y)).copied() {
-            let no_dupe_in_row = || {
-                self.values
-                    .row(x)
-                    .indexed_iter()
-                    .all(|(iy, &val)| iy == y || val != value)
-            };
-            let no_dupe_in_col = || {
-                self.values
-                    .column(y)
-                    .indexed_iter()
-                    .all(|(ix, &val)| ix == x || val != value)
-            };
-            let no_dupe_in_cell = || {
-                self.values
-                    .exact_chunks((self.grid_w, self.grid_w))
-                    .into_iter()
-                    .nth(y / self.grid_w + (x / self.grid_w) * self.grid_w)
-                    .unwrap()
-                    .indexed_iter()
-                    .all(|((ix, iy), &val)| {
-                        (ix == x % self.grid_w && iy == y % self.grid_w) || val != value
-                    })
-            };
-            return no_dupe_in_row() && no_dupe_in_col() && no_dupe_in_cell();
-        }
-        unreachable!("Value changed should not be empty")
+    fn validate_chage_at(&self, (x, y): (usize, usize), new_value: Option<SudokuValue>) -> bool {
+        let no_dupe_in_row = || {
+            self.values
+                .row(x)
+                .indexed_iter()
+                .all(|(iy, &val)| iy == y || val != new_value)
+        };
+        let no_dupe_in_col = || {
+            self.values
+                .column(y)
+                .indexed_iter()
+                .all(|(ix, &val)| ix == x || val != new_value)
+        };
+        let no_dupe_in_cell = || {
+            self.values
+                .exact_chunks((self.grid_w, self.grid_w))
+                .into_iter()
+                .nth(y / self.grid_w + (x / self.grid_w) * self.grid_w)
+                .unwrap()
+                .indexed_iter()
+                .all(|((ix, iy), &val)| {
+                    (ix == x % self.grid_w && iy == y % self.grid_w) || val != new_value
+                })
+        };
+        no_dupe_in_row() && no_dupe_in_col() && no_dupe_in_cell()
     }
 }
 
@@ -83,9 +80,10 @@ impl Solver for IterativeDfs {
         while ix < len {
             debug_assert!((0..self.empty.len()).contains(&ix), "Index out of bounds");
             let (x, y) = *unsafe { self.empty.get_unchecked(ix) };
+
             // Update empty value
             let value = sudoku.values.get_mut((x, y)).expect("valid coordinate");
-            *value = if let Some(sval) = value {
+            let new_value = if let Some(sval) = value {
                 if let Some(sval) = sval.next(max) {
                     Some(sval)
                 } else {
@@ -100,7 +98,8 @@ impl Solver for IterativeDfs {
             } else {
                 Some(NonZeroU8::new(1).unwrap().into())
             };
-            if sudoku.validate_chage_at((x, y)) {
+            *value = new_value;
+            if sudoku.validate_chage_at((x, y), new_value) {
                 ix += 1;
             }
         }
@@ -119,10 +118,11 @@ impl RecursiveDfs {
         let Some((ix, _)) = sudoku.values.indexed_iter().find(|(_, val)| val.is_none()) else { return ControlFlow::Break(()); };
         // Try different values for the empty cell
         for value in 1..=max {
+            let new_value = Some(unsafe { NonZeroU8::new_unchecked(value) }.into());
             let empty = sudoku.values.get_mut(ix).unwrap();
-            *empty = Some(unsafe { NonZeroU8::new_unchecked(value) }.into());
+            *empty = new_value;
             // Ensure valid Sudoku
-            if sudoku.validate_chage_at(ix) {
+            if sudoku.validate_chage_at(ix, new_value) {
                 // Try setting another cell
                 Self::recurse(sudoku)?;
             }
