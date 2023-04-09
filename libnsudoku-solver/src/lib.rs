@@ -440,6 +440,45 @@ impl TryFrom<Sudoku> for SolvedSudoku {
 }
 
 /// The value of a cell in the Sudoku
+impl std::fmt::Display for SolvedSudoku {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let num_cells = self.grid_w;
+        let value_pad = if self.grid_w < 4 {
+            1
+        } else if self.grid_w < 10 {
+            2
+        } else if self.grid_w < 32 {
+            3
+        } else {
+            unreachable!("invalid `grid_w`")
+        };
+        let cell_width = (value_pad + 1) * self.grid_w + 1;
+        let sep_line = format!(
+            "+{}",
+            format!("{}+", "-".repeat(cell_width)).repeat(num_cells)
+        );
+
+        for (ix, row) in self.values.rows().into_iter().enumerate() {
+            // Write separating line
+            if (ix % num_cells) == 0 {
+                writeln!(f, "{sep_line}")?;
+            }
+
+            for (ix, value) in row.into_iter().enumerate() {
+                // Cell separator
+                if ix % num_cells == 0 {
+                    write!(f, "| ")?;
+                }
+                // Value
+                write!(f, "{value:>value_pad$} ")?;
+            }
+            writeln!(f, "|")?;
+        }
+
+        write!(f, "{sep_line}")
+    }
+}
+
 ///
 /// Limits grid size to 15x15 as it can only represent values up to 255 (16x16 grids require 256 to
 /// be representable)
