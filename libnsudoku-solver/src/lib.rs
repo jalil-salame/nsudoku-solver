@@ -4,6 +4,7 @@ use std::num::NonZeroU8;
 use ndarray::{Array2, ArrayView2};
 use thiserror::Error;
 
+mod parse;
 pub mod solver;
 
 #[cfg(test)]
@@ -486,6 +487,12 @@ impl std::fmt::Display for SolvedSudoku {
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct SudokuValue(NonZeroU8);
+
+impl SudokuValue {
+    pub fn new(value: u8) -> Option<Self> {
+        NonZeroU8::new(value).map(Self::from)
+    }
+}
 
 impl From<NonZeroU8> for SudokuValue {
     fn from(value: NonZeroU8) -> Self {
