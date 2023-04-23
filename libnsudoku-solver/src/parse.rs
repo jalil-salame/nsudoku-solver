@@ -2,10 +2,10 @@ use std::str::FromStr;
 
 use winnow::{
     branch::alt,
-    bytes::one_of,
+    bytes::{one_of, take_while1},
     character::{dec_uint, line_ending, space1},
     combinator::opt,
-    multi::{many1, separated1},
+    multi::{count, many1, separated1},
     prelude::*,
     sequence::{delimited, preceded, terminated},
 };
@@ -46,7 +46,10 @@ fn one_sudoku_per_line(input: &str) -> IResult<&str, Vec<Sudoku>> {
 /// Parse a simple sudoku out of a string
 ///
 /// ```rust
+/// use libnsudoku_solver::Sudoku;
+///
 /// let s: Sudoku = "1234....4321....".parse().unwrap();
+///
 /// assert_eq!(format!("{s}"),
 /// "+-----+-----+
 /// | 1 2 | 3 4 |
@@ -73,9 +76,94 @@ fn simple_sudoku(input: &str) -> IResult<&str, Sudoku> {
     .parse_next(input)
 }
 
+/// Parses a separator line
+fn separator_line(grid_w: usize) -> impl Fn(&str) -> IResult<&str, ()> {
+    let padding = match grid_w {
+        2..=3 => 2,
+        4..=9 => 3,
+        10..=15 => 4,
+        _ => todo!("handle error case"),
+    };
+    move |input: &str| {
+        preceded(
+            '+',
+            count(
+                terminated(count::<_, _, (), _, _>('-', grid_w * padding + 1), '+'),
+                grid_w,
+            ),
+        )
+        .parse_next(input)
+    }
+}
+
+/// Parses a separator line and extracts the ``grid_w`` out of it
+fn separator_line_grid_w<'a>(input: &'a str) -> IResult<&'a str, usize> {
+    take_while1(|c: char| c == '+' || c == '-')
+        .and_then(|input: &'a str| {
+            let grid_w = input.bytes().filter(|&c| c == b'+').count() - 1;
+            separator_line(grid_w).map(|_: ()| grid_w).parse_next(input)
+        })
+        .parse_next(input)
+}
+
+/// Flattens a vector of vectors
+///
+/// ```rust
+/// use libnsudoku_solver::parse::flatten_vec;
+/// let v = flatten_vec(vec![vec![1, 2], vec![3, 4]]);
+/// assert_eq!(v, vec![1, 2, 3, 4]);
+/// ```
+pub fn flatten_vec<T>(vec: Vec<Vec<T>>) -> Vec<T> {
+    let mut v = vec![];
+    let additional = vec.iter().map(Vec::len).sum();
+
+    v.reserve(additional);
+    for ele in vec {
+        v.extend(ele);
+    }
+    v
+}
+
+/// Parses a row of Sudoku cells
+fn parse_row<'a>(grid_w: usize) -> impl Fn(&'a str) -> IResult<&'a str, Vec<u8>> {
+    // Parse "." => 0u8, "123" => 123u8
+    let sudoku_value = |input| alt(('.'.map(|_| 0), dec_uint)).parse_next(input);
+
+    // Parses "| . 2 | . 3 |" => vec![0u8, 2u8, 0u8, 3u8]
+    move |input: &'a str| {
+        terminated(
+            // Parses "| . 2 | . 3 |" => vec![vec![0u8, 2u8], vec![0u8, 3u8]]
+            //         ^^^^^^^^^^^^
+            count::<_, _, Vec<Vec<u8>>, _, _>(
+                // Parses "| . 2 | . 3 |" => vec![0u8, 2u8]
+                //         ^^^^^^
+                delimited(
+                    // Parses "| . 2 | . 3 |"
+                    //         ^
+                    '|',
+                    // Parses "| . 2 | . 3 |" => vec![0u8, 2u8]
+                    //          ^^^^
+                    count::<_, _, Vec<u8>, _, _>(preceded(space1, sudoku_value), grid_w),
+                    // Parses "| . 2 | . 3 |"
+                    //              ^
+                    space1,
+                ),
+                grid_w,
+            ),
+            // Parses "| . 2 | . 3 |"
+            //                     ^
+            '|',
+        )
+        .map(flatten_vec)
+        .parse_next(input)
+    }
+}
+
 /// Parses a pretty printed sudoku out of a string
 ///
 /// ```rust
+/// use libnsudoku_solver::Sudoku;
+///
 /// let s1: Sudoku = "1234....4321....".parse().unwrap();
 /// let s2: Sudoku =
 /// "+-----+-----+
@@ -85,51 +173,50 @@ fn simple_sudoku(input: &str) -> IResult<&str, Sudoku> {
 /// | 4 3 | 2 1 |
 /// | . . | . . |
 /// +-----+-----+".parse().unwrap();
+///
 /// assert_eq!(s1, s2);
 /// ```
-fn sudoku<'a>(input: &'a str) -> IResult<&'a str, Sudoku> {
-    // Parse a separator_line: +---+---+ RE: ((+-\+)\+)+
-    let separator_line = |input: &'a str| -> IResult<&'a str, ()> {
-        let cell = |input: &'a str| -> IResult<&'a str, ()> { many1('-').parse_next(input) };
-        delimited('+', separated1(cell, '+'), '+').parse_next(input)
-    };
+fn sudoku(input: &str) -> IResult<&str, Sudoku> {
+    // Extract ``grid_w``
+    let (input, grid_w) = terminated(separator_line_grid_w, line_ending).parse_next(input)?;
 
-    // Parse out values inside cells
-    let sudoku_cells = |input: &'a str| -> IResult<&'a str, Vec<u8>> {
-        // Parse out values inside a row
-        let sudoku_values = |input: &'a str| -> IResult<&'a str, Vec<u8>> {
-            delimited(
-                '|',
-                separated1(
-                    preceded(space1, alt(('.'.map(|_| 0), dec_uint))),
-                    preceded(space1, '|'),
-                ),
-                preceded(space1, '|'),
-            )
-            .parse_next(input)
-        };
-        many1(terminated(sudoku_values, line_ending))
-            // flatten values
-            .map(|values: Vec<Vec<u8>>| values.into_iter().flatten().collect())
-            .parse_next(input)
-    };
-
-    delimited(
-        terminated(separator_line, line_ending),
-        separated1(sudoku_cells, terminated(separator_line, line_ending)).map_res(
-            |values: Vec<Vec<u8>>| {
-                // flatten values and convert to sudoku values
-                let values: Vec<Option<SudokuValue>> =
-                    values.into_iter().flatten().map(SudokuValue::new).collect();
-                // If values.len() is > 225 it is wrong anyways so we don't care about these lints
-                #[allow(clippy::cast_precision_loss)]
-                #[allow(clippy::cast_possible_truncation)]
-                #[allow(clippy::cast_sign_loss)]
-                let grid_w = (values.len() as f64).sqrt().sqrt() as usize; // Fourth root of length
-                Sudoku::try_new(grid_w, values)
-            },
+    count(
+        terminated(
+            count(terminated(parse_row(grid_w), line_ending), grid_w).map(flatten_vec),
+            terminated(separator_line(grid_w), opt(line_ending)),
         ),
-        separator_line,
+        grid_w,
     )
+    .map_res(|v| {
+        let values = SudokuValue::many(flatten_vec(v));
+        Sudoku::try_new(grid_w, values)
+    })
     .parse_next(input)
+}
+
+#[cfg(test)]
+mod test {
+    use crate::Sudoku;
+    #[allow(unused)]
+    use pretty_assertions::{assert_eq, assert_ne};
+
+    use super::parse_row;
+
+    #[test]
+    fn it_parses() {
+        let s1: Sudoku = "1234....4321....".parse().expect("successful parse");
+        let s2: Sudoku = "+-----+-----+\n| 1 2 | 3 4 |\n| . . | . . |\n+-----+-----+\n| 4 3 | 2 1 |\n| . . | . . |\n+-----+-----+"
+            .parse()
+            .expect("successful parse");
+        assert_eq!(s1, s2);
+    }
+
+    #[test]
+    fn parses_a_cell() {
+        use winnow::Parser;
+        let s = parse_row(2)
+            .parse("| 1 2 | 3 4 |")
+            .expect("successful parse");
+        assert_eq!(s, vec![1, 2, 3, 4]);
+    }
 }
