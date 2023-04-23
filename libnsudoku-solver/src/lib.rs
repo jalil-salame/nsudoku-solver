@@ -480,6 +480,7 @@ impl std::fmt::Display for SolvedSudoku {
     }
 }
 
+/// A Simple sudoku value (may not be empty)
 ///
 /// Limits grid size to 15x15 as it can only represent values up to 255 (16x16 grids require 256 to
 /// be representable)
@@ -491,6 +492,14 @@ pub struct SudokuValue(NonZeroU8);
 impl SudokuValue {
     pub fn new(value: u8) -> Option<Self> {
         NonZeroU8::new(value).map(Self::from)
+    }
+
+    pub fn many(values: Vec<u8>) -> Vec<Option<Self>> {
+        static_assertions::assert_eq_size!(u8, Option<SudokuValue>);
+
+        // Safety: Niche optimization took place and Option<SudokuValue> is guaranteed to be 0 if
+        // None and Some(NonZeroU8) if != 0, so Option<SudokuValue> covers all values of u8
+        unsafe { std::mem::transmute(values) }
     }
 }
 
