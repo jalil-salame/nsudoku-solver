@@ -4,7 +4,7 @@ use std::num::NonZeroU8;
 use ndarray::{Array2, ArrayView2};
 use thiserror::Error;
 
-mod parse;
+pub mod parse;
 pub mod solver;
 
 #[cfg(test)]
