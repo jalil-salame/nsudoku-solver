@@ -4,43 +4,58 @@ use winnow::{
     branch::alt,
     bytes::one_of,
     character::{dec_uint, line_ending, space1},
+    combinator::opt,
     multi::{many1, separated1},
     prelude::*,
     sequence::{delimited, preceded, terminated},
 };
 
-use crate::{Sudoku, SudokuValue};
-
-// use thiserror::Error;
-// #[derive(Debug, Error, PartialEq, Eq)]
-// #[non_exhaustive]
-// #[allow(clippy::module_name_repetitions)]
-// pub enum ParseSudoku<I> {
-//     Winnow(I, ErrorKind),
-//     Sudoku(#[from] SudokuError),
-// }
-
-// impl<I> ParseError<I> for ParseSudoku<I> {
-//     fn from_error_kind(input: I, kind: ErrorKind) -> Self {
-//         ParseSudoku::Winnow(input, kind)
-//     }
-//
-//     fn append(self, _: I, _: ErrorKind) -> Self {
-//         self
-//     }
-// }
+use crate::{Sudoku, SudokuError, SudokuValue};
 
 impl FromStr for Sudoku {
     type Err = winnow::error::Error<String>;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match simple_sudoku.parse(s) {
-            Ok(s) => Ok(s),
-            Err(_) => sudoku.parse(s).map_err(winnow::error::Error::into_owned),
-        }
+        alt((simple_sudoku, sudoku))
+            .parse(s)
+            .map_err(winnow::error::Error::into_owned)
     }
 }
 
+/// Parses many sudokus separated by newlines
+///
+/// # Errors
+///
+/// - Any sudoku is invalid (see ``Sudoku::try_new``)
+/// - The format is wrong
+pub fn multi_sudoku(input: &str) -> Result<Vec<Sudoku>, winnow::error::Error<String>> {
+    one_sudoku_per_line
+        .parse(input)
+        .map_err(winnow::error::Error::into_owned)
+}
+
+/// Parses many sudokus separated by newlines
+fn one_sudoku_per_line(input: &str) -> IResult<&str, Vec<Sudoku>> {
+    terminated(
+        separated1(alt((simple_sudoku, sudoku)), line_ending),
+        opt(line_ending),
+    )
+    .parse_next(input)
+}
+
+/// Parse a simple sudoku out of a string
+///
+/// ```rust
+/// let s: Sudoku = "1234....4321....".parse().unwrap();
+/// assert_eq!(format!("{s}"),
+/// "+-----+-----+
+/// | 1 2 | 3 4 |
+/// | . . | . . |
+/// +-----+-----+
+/// | 4 3 | 2 1 |
+/// | . . | . . |
+/// +-----+-----+");
+/// ```
 fn simple_sudoku(input: &str) -> IResult<&str, Sudoku> {
     many1(alt((
         '.'.map(|_| 0),
@@ -51,13 +66,27 @@ fn simple_sudoku(input: &str) -> IResult<&str, Sudoku> {
         let grid_w = match values.len() {
             16 => 2,
             81 => 3,
-            _ => 0, // It is invalid for these values
+            len => return Err(SudokuError::InvalidValuesAmount { len, expected: 81 }),
         };
         Sudoku::try_new(grid_w, values)
     })
     .parse_next(input)
 }
 
+/// Parses a pretty printed sudoku out of a string
+///
+/// ```rust
+/// let s1: Sudoku = "1234....4321....".parse().unwrap();
+/// let s2: Sudoku =
+/// "+-----+-----+
+/// | 1 2 | 3 4 |
+/// | . . | . . |
+/// +-----+-----+
+/// | 4 3 | 2 1 |
+/// | . . | . . |
+/// +-----+-----+".parse().unwrap();
+/// assert_eq!(s1, s2);
+/// ```
 fn sudoku<'a>(input: &'a str) -> IResult<&'a str, Sudoku> {
     // Parse a separator_line: +---+---+ RE: ((+-\+)\+)+
     let separator_line = |input: &'a str| -> IResult<&'a str, ()> {
