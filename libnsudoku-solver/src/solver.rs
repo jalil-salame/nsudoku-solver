@@ -24,7 +24,10 @@ impl super::SudokuValue {
         if self == max {
             None
         } else {
-            Some(Self(NonZeroU8::new(self.0.get() + 1).unwrap()))
+            debug_assert_ne!(self.0.get(), u8::MAX);
+            // Safety: This can only be 0 if self.0.get() == u8::MAX, this could only happen if
+            // self.0 > max.0 which is very undefined
+            Some(Self(unsafe { NonZeroU8::new_unchecked(self.0.get() + 1) }))
         }
     }
 }
@@ -79,6 +82,9 @@ impl Solver for IterativeDfs {
         let mut ix = 0;
         while ix < len {
             debug_assert!((0..self.empty.len()).contains(&ix), "Index out of bounds");
+            // Safety: when finding empty cells the index returned should always be valid, this is
+            // only false if resized, which should never happen (Sudokus are a fixed size after
+            // being created)
             let (x, y) = *unsafe { self.empty.get_unchecked(ix) };
 
             // Update empty value
@@ -96,7 +102,8 @@ impl Solver for IterativeDfs {
                     continue;
                 }
             } else {
-                Some(NonZeroU8::new(1).unwrap().into())
+                // Safety: the literal value 1 is never 0
+                Some(unsafe { NonZeroU8::new_unchecked(1) }.into())
             };
             *value = new_value;
             if sudoku.validate_chage_at((x, y), new_value) {
@@ -118,6 +125,7 @@ impl RecursiveDfs {
         let Some((ix, _)) = sudoku.values.indexed_iter().find(|(_, val)| val.is_none()) else { return ControlFlow::Break(()); };
         // Try different values for the empty cell
         for value in 1..=max {
+            // Safety: The range ``1..=max`` will never produce ``0``
             let new_value = Some(unsafe { NonZeroU8::new_unchecked(value) }.into());
             let empty = sudoku.values.get_mut(ix).unwrap();
             *empty = new_value;
