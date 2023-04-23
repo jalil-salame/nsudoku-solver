@@ -490,10 +490,26 @@ impl std::fmt::Display for SolvedSudoku {
 pub struct SudokuValue(NonZeroU8);
 
 impl SudokuValue {
+    /// Creates a ``Option<SudokuValue>`` from a ``u8``
+    ///
+    /// ```rust
+    /// use libnsudoku_solver::SudokuValue;
+    ///
+    /// assert_eq!(None, SudokuValue::new(0));
+    /// assert_ne!(None, SudokuValue::new(1));
+    /// ```
     pub fn new(value: u8) -> Option<Self> {
         NonZeroU8::new(value).map(Self::from)
     }
 
+    #[must_use]
+    /// Efficiently converts a ``Vec<u8>`` into a ``Vec<Option<SudokuValue>>``
+    ///
+    /// ```rust
+    /// use libnsudoku_solver::SudokuValue;
+    ///
+    /// assert_eq!(vec![None; 4], SudokuValue::many(vec![0; 4]));
+    /// ```
     pub fn many(values: Vec<u8>) -> Vec<Option<Self>> {
         static_assertions::assert_eq_size!(u8, Option<SudokuValue>);
 
