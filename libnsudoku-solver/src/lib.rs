@@ -542,11 +542,7 @@ mod test {
     fn sudoku_2x2_bad_value() {
         let s = Sudoku::try_new(
             2,
-            [1, 2, 3, 4, 5, 4, 1, 3, 4, 3, 2, 1, 2, 1, 4, 2]
-                .into_iter()
-                .map(NonZeroU8::new)
-                .map(|val| val.map(Into::into))
-                .collect(),
+            SudokuValue::many(vec![1, 2, 3, 4, 5, 4, 1, 3, 4, 3, 2, 1, 2, 1, 4, 2]),
         );
 
         assert_eq!(s, Err(SudokuError::InvalidValue { value: 5, max: 4 }));
@@ -556,11 +552,7 @@ mod test {
     fn sudoku_2x2_too_few_values() {
         let s = Sudoku::try_new(
             2,
-            [1, 2, 3, 4, 2, 4, 1, 3, 4, 3, 2, 1, 2, 1, 4]
-                .into_iter()
-                .map(NonZeroU8::new)
-                .map(|val| val.map(Into::into))
-                .collect(),
+            SudokuValue::many(vec![1, 2, 3, 4, 2, 4, 1, 3, 4, 3, 2, 1, 2, 1, 4]),
         );
 
         assert_eq!(
@@ -576,11 +568,7 @@ mod test {
     fn sudoku_2x2_too_many_values() {
         let s = Sudoku::try_new(
             2,
-            [1, 2, 3, 4, 2, 4, 1, 3, 4, 3, 2, 1, 2, 1, 4, 2, 1]
-                .into_iter()
-                .map(NonZeroU8::new)
-                .map(|val| val.map(Into::into))
-                .collect(),
+            SudokuValue::many(vec![1, 2, 3, 4, 2, 4, 1, 3, 4, 3, 2, 1, 2, 1, 4, 2, 1]),
         );
 
         assert_eq!(
@@ -594,11 +582,7 @@ mod test {
 
     #[test]
     fn solved_sudoku_2x2() {
-        let values: Vec<_> = [1, 2, 3, 4, 3, 4, 1, 2, 4, 3, 2, 1, 2, 1, 4, 3]
-            .into_iter()
-            .map(NonZeroU8::new)
-            .map(|val| val.map(Into::into))
-            .collect();
+        let values = SudokuValue::many(vec![1, 2, 3, 4, 3, 4, 1, 2, 4, 3, 2, 1, 2, 1, 4, 3]);
         let s = Sudoku::try_new(2, values.clone()).unwrap();
 
         assert_eq!(
@@ -615,11 +599,7 @@ mod test {
     fn sudoku_2x2_bad_row() {
         let s = Sudoku::try_new(
             2,
-            [1, 1, 3, 4, 3, 4, 1, 2, 4, 3, 2, 1, 2, 1, 4, 3]
-                .into_iter()
-                .map(NonZeroU8::new)
-                .map(|val| val.map(Into::into))
-                .collect(),
+            SudokuValue::many(vec![1, 1, 3, 4, 3, 4, 1, 2, 4, 3, 2, 1, 2, 1, 4, 3]),
         );
 
         assert_eq!(s, Err(SudokuError::WrongValueSet { pos: (0, 0) }));
@@ -629,11 +609,7 @@ mod test {
     fn sudoku_2x2_bad_col() {
         let s = Sudoku::try_new(
             2,
-            [1, 2, 3, 4, 4, 3, 1, 2, 4, 3, 2, 1, 2, 1, 4, 3]
-                .into_iter()
-                .map(NonZeroU8::new)
-                .map(|val| val.map(Into::into))
-                .collect(),
+            SudokuValue::many(vec![1, 2, 3, 4, 4, 3, 1, 2, 4, 3, 2, 1, 2, 1, 4, 3]),
         );
 
         assert_eq!(s, Err(SudokuError::WrongValueSet { pos: (0, 1) }));
@@ -643,11 +619,7 @@ mod test {
     fn sudoku_2x2_bad_cell() {
         let s = Sudoku::try_new(
             2,
-            [1, 2, 3, 4, 2, 1, 4, 3, 3, 4, 1, 2, 4, 3, 2, 1]
-                .into_iter()
-                .map(NonZeroU8::new)
-                .map(|val| val.map(Into::into))
-                .collect(),
+            SudokuValue::many(vec![1, 2, 3, 4, 2, 1, 4, 3, 3, 4, 1, 2, 4, 3, 2, 1]),
         );
 
         assert_eq!(s, Err(SudokuError::WrongValueSet { pos: (0, 2) }));
