@@ -65,7 +65,7 @@ fn simple_sudoku(input: &str) -> IResult<&str, Sudoku> {
         one_of("0123456789").map(|c| c as u8 - b'0'),
     )))
     .map_res(|values: Vec<u8>| {
-        let values: Vec<Option<SudokuValue>> = values.into_iter().map(SudokuValue::new).collect();
+        let values = SudokuValue::many(values);
         let grid_w = match values.len() {
             16 => 2,
             81 => 3,
