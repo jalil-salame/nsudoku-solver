@@ -2,11 +2,12 @@ use std::{num::NonZeroU8, ops::ControlFlow};
 
 use crate::{SolvedSudoku, Sudoku, SudokuValue};
 
-use thiserror::Error;
+use justerror::Error;
 
-#[derive(Debug, Clone, Error, PartialEq, Eq)]
+#[Error]
+#[derive(Clone, PartialEq, Eq)]
 pub enum Error {
-    #[error("There is no way to solve this Sudoku")]
+    // #[error("There is no way to solve this Sudoku")]
     NotSolvable,
 }
 

@@ -1,11 +1,11 @@
 use std::str::FromStr;
 
 use winnow::{
+    ascii::{dec_uint, line_ending, space1},
     branch::alt,
-    bytes::{one_of, take_while1},
-    character::{dec_uint, line_ending, space1},
-    combinator::opt,
-    multi::{count, many1, separated1},
+    bytes::{one_of, take_while},
+    combinator::{opt, repeat},
+    multi::separated1,
     prelude::*,
     sequence::{delimited, preceded, terminated},
 };
@@ -60,11 +60,11 @@ fn one_sudoku_per_line(input: &str) -> IResult<&str, Vec<Sudoku>> {
 /// +-----+-----+");
 /// ```
 fn simple_sudoku(input: &str) -> IResult<&str, Sudoku> {
-    many1(alt((
-        '.'.map(|_| 0),
-        one_of("0123456789").map(|c| c as u8 - b'0'),
-    )))
-    .map_res(|values: Vec<u8>| {
+    repeat(
+        1..,
+        alt(('.'.map(|_| 0), one_of("0123456789").map(|c| c as u8 - b'0'))),
+    )
+    .try_map(|values: Vec<u8>| {
         let values = SudokuValue::many(values);
         let grid_w = match values.len() {
             16 => 2,
@@ -87,9 +87,9 @@ fn separator_line(grid_w: usize) -> impl Fn(&str) -> IResult<&str, ()> {
     move |input: &str| {
         preceded(
             '+',
-            count(
-                terminated(count::<_, _, (), _, _>('-', grid_w * padding + 1), '+'),
+            repeat(
                 grid_w,
+                terminated(repeat::<_, _, (), _, _>(grid_w * padding + 1, '-'), '+'),
             ),
         )
         .parse_next(input)
@@ -98,7 +98,7 @@ fn separator_line(grid_w: usize) -> impl Fn(&str) -> IResult<&str, ()> {
 
 /// Parses a separator line and extracts the ``grid_w`` out of it
 fn separator_line_grid_w<'a>(input: &'a str) -> IResult<&'a str, usize> {
-    take_while1(|c: char| c == '+' || c == '-')
+    take_while(1.., |c: char| c == '+' || c == '-')
         .and_then(|input: &'a str| {
             let grid_w = input.bytes().filter(|&c| c == b'+').count() - 1;
             separator_line(grid_w).map(|_: ()| grid_w).parse_next(input)
@@ -134,7 +134,8 @@ fn parse_row<'a>(grid_w: usize) -> impl Fn(&'a str) -> IResult<&'a str, Vec<u8>>
         terminated(
             // Parses "| . 2 | . 3 |" => vec![vec![0u8, 2u8], vec![0u8, 3u8]]
             //         ^^^^^^^^^^^^
-            count::<_, _, Vec<Vec<u8>>, _, _>(
+            repeat::<_, _, Vec<Vec<u8>>, _, _>(
+                grid_w,
                 // Parses "| . 2 | . 3 |" => vec![0u8, 2u8]
                 //         ^^^^^^
                 delimited(
@@ -143,12 +144,11 @@ fn parse_row<'a>(grid_w: usize) -> impl Fn(&'a str) -> IResult<&'a str, Vec<u8>>
                     '|',
                     // Parses "| . 2 | . 3 |" => vec![0u8, 2u8]
                     //          ^^^^
-                    count::<_, _, Vec<u8>, _, _>(preceded(space1, sudoku_value), grid_w),
+                    repeat::<_, _, Vec<u8>, _, _>(grid_w, preceded(space1, sudoku_value)),
                     // Parses "| . 2 | . 3 |"
                     //              ^
                     space1,
                 ),
-                grid_w,
             ),
             // Parses "| . 2 | . 3 |"
             //                     ^
@@ -180,14 +180,14 @@ fn sudoku(input: &str) -> IResult<&str, Sudoku> {
     // Extract ``grid_w``
     let (input, grid_w) = terminated(separator_line_grid_w, line_ending).parse_next(input)?;
 
-    count(
+    repeat(
+        grid_w,
         terminated(
-            count(terminated(parse_row(grid_w), line_ending), grid_w).map(flatten_vec),
+            repeat(grid_w, terminated(parse_row(grid_w), line_ending)).map(flatten_vec),
             terminated(separator_line(grid_w), opt(line_ending)),
         ),
-        grid_w,
     )
-    .map_res(|v| {
+    .try_map(|v| {
         let values = SudokuValue::many(flatten_vec(v));
         Sudoku::try_new(grid_w, values)
     })

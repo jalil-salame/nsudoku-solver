@@ -1,2 +1,2 @@
 [workspace]
-members = ["nsudoku-solver-cli", "libnsudoku-solver"]
+members = ["libnsudoku-solver", "nsudoku-solver-cli"]

@@ -2,7 +2,8 @@
 use std::num::NonZeroU8;
 
 use ndarray::{Array2, ArrayView2};
-use thiserror::Error;
+#[macro_use]
+extern crate justerror;
 
 pub mod parse;
 pub mod solver;
@@ -12,18 +13,30 @@ pub mod solver;
 use pretty_assertions::{assert_eq, assert_ne};
 
 /// Errors returned by functions creating Sudokus
-#[derive(Debug, Error, PartialEq, Eq)]
+#[Error]
+#[derive(PartialEq, Eq)]
 pub enum SudokuError {
-    #[error("Invalid grid width: {grid_w}, expected value in range (2..=15)")]
-    InvalidGridWidth { grid_w: usize },
-    #[error("Invalid value for Sudoku, expected value in range 1..={max} got {value}")]
-    InvalidValue { value: u8, max: usize },
-    #[error("Invalid number of values for Sudoku, expected {expected} got {len}")]
-    InvalidValuesAmount { len: usize, expected: usize },
-    #[error("Is not a solved sudoku")]
+    // #[error("Invalid grid width: {grid_w}, expected value in range (2..=15)")]
+    InvalidGridWidth {
+        grid_w: usize,
+    },
+    // #[error("Invalid value for Sudoku, expected value in range 1..={max} got {value}")]
+    InvalidValue {
+        value: u8,
+        max: usize,
+    },
+    // #[error("Invalid number of values for Sudoku, expected {expected} got {len}")]
+    InvalidValuesAmount {
+        len: usize,
+        expected: usize,
+    },
+    // #[error("Is not a solved sudoku")]
     NotSolved,
-    #[error("Wrong value at {pos:?}")]
-    WrongValueSet { pos: (usize, usize) },
+    // #[error("Wrong value at {pos:?}")]
+    WrongValueSet {
+        #[fmt(debug)]
+        pos: (usize, usize),
+    },
 }
 
 pub type Result<T> = core::result::Result<T, SudokuError>;

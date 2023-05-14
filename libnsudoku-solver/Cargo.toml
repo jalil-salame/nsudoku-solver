@@ -2,15 +2,15 @@
 name = "libnsudoku-solver"
 version = "0.1.0"
 edition = "2021"
-
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+justerror = "1.1.0"
 ndarray = "0.15.6"
 serde = { version = "1.0.158", features = ["derive"], optional = true }
+static_assertions = "1.1.0"
 thiserror = "1.0.40"
 winnow = "0.4.1"
-static_assertions = "1.1.0"
 
 [dev-dependencies]
 criterion = "0.4.0"
